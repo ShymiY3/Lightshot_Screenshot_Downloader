@@ -4,6 +4,11 @@ import requests
 import os
 import datetime
 
+class SSDownloadException(Exception):
+    pass
+
+
+
 class ScreenshotDownload:
     def __init__(self, urls) -> None:
         self.urls = urls
@@ -37,14 +42,14 @@ class ScreenshotDownload:
         headers = {'user-agent': generate_user_agent()}
         request = requests.get(url, headers=headers)
         if request.status_code != 200:
-            raise Exception("No connection to website")
+            raise SSDownloadException("No connection to website")
         
         soup = BeautifulSoup(request.text, 'html.parser')
         tag = soup.find(id='screenshot-image')
         img_source = tag.get('src', None)
         
         if img_source is None:
-            raise Exception("Image source doesn't exist")
+            raise SSDownloadException("Image source doesn't exist")
         
         return img_source
         
@@ -54,7 +59,7 @@ class ScreenshotDownload:
         for url in self.urls:
             try:
                 img_source = self.get_image_source(url)
-            except Exception as e:
+            except SSDownloadException as e:
                 print(e)
                 continue
             img_sources.append(img_source)
