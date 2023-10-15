@@ -8,7 +8,6 @@ class SSDownloadException(Exception):
     pass
 
 
-
 class ScreenshotDownload:
     def __init__(self, urls) -> None:
         self.urls = urls
@@ -38,13 +37,15 @@ class ScreenshotDownload:
             return today_str
         return f'{today_str}_{suffix}'
 
-    def get_image_source(self, url):
+    def make_request(self, url):
         headers = {'user-agent': generate_user_agent()}
         request = requests.get(url, headers=headers)
         if request.status_code != 200:
             raise SSDownloadException("No connection to website")
+        return request
         
-        soup = BeautifulSoup(request.text, 'html.parser')
+    def scrape_image(self, request_text):
+        soup = BeautifulSoup(request_text, 'html.parser')
         tag = soup.find(id='screenshot-image')
         img_source = tag.get('src', None)
         
@@ -52,33 +53,40 @@ class ScreenshotDownload:
             raise SSDownloadException("Image source doesn't exist")
         
         return img_source
-        
-    def retrieve_images(self):
+    
+    def fetch_image_sources(self):
         img_sources = []
-        
         for url in self.urls:
             try:
-                img_source = self.get_image_source(url)
+                request = self.make_request(url)
+                img_source = self.scrape_image(request.text)
             except SSDownloadException as e:
                 print(e)
                 continue
-            img_sources.append(img_source)
-            
-        if not img_sources:
-            return
+            img_sources.append(img_source)    
 
-        os.mkdir(self.dir_name)
-        
-        for ind, img in enumerate(img_sources):
+        return img_sources
+    
+    def save_image(self, img_title, content):
+        with open(os.path.join(self.dir_name,f'{img_title}.png'), 'wb') as f:
+                f.write(content)
+    
+    def download_and_save(self, img_sources):
+         for ind, img in enumerate(img_sources):
             img_title = f'image_{ind}' if ind else 'image'
             request = requests.get(img)
             if request.status_code != 200:
                 print(f"Can't download image: {img}")
                 continue
-                            
-            with open(os.path.join(self.dir_name,f'{img_title}.png'), 'wb') as f:
-                f.write(request.content)
-            
+            self.save_image(img_title, request.content)
+    
+    def run(self):
+        img_sources = self.fetch_image_sources()
+        if not img_sources:
+            return 
+        os.mkdir(self.dir_name)
+        self.download_and_save(img_sources)
+    
    
 if __name__ == '__main__':
     def get_urls_from_file():
@@ -127,6 +135,6 @@ if __name__ == '__main__':
                 return
 
         SD = ScreenshotDownload(urls)
-        SD.retrieve_images()
+        SD.run()
         
     main()
