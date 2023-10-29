@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 from user_agent import generate_user_agent
+from urllib.parse import urlparse
 import requests
 import os
 import datetime
@@ -14,7 +15,7 @@ class ScreenshotDownload:
         if isinstance(urls, str):
             self.urls = [urls]
         self.dir_name = self.get_dir_name() 
-            
+
     def get_dir_name(self):
         dirs = os.listdir()
         today_str = str(datetime.date.today())
@@ -36,10 +37,28 @@ class ScreenshotDownload:
         if suffix == 0:
             return today_str
         return f'{today_str}_{suffix}'
-
+    
+    def is_valid_url(self, url):
+        print("URL")
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except:
+            return False
+        
+    def is_valid_domain(self, url):
+        DOMAIN = "prnt.sc"
+        try:
+            return DOMAIN in urlparse(url).netloc
+        except:
+            return False
+        
     def make_request(self, url):
         headers = {'user-agent': generate_user_agent()}
-        request = requests.get(url, headers=headers)
+        try:
+            request = requests.get(url, headers=headers)
+        except Exception as e:
+            raise SSDownloadException(e)
         if request.status_code != 200:
             raise SSDownloadException("No connection to website")
         return request
@@ -57,6 +76,10 @@ class ScreenshotDownload:
     def fetch_image_sources(self):
         img_sources = []
         for url in self.urls:
+            url = url.strip()
+            url = "https://" + url if not url.startswith("http") else url
+            if not (self.is_valid_url(url) and self.is_valid_domain(url)): 
+                continue
             try:
                 request = self.make_request(url)
                 img_source = self.scrape_image(request.text)
@@ -125,6 +148,7 @@ if __name__ == '__main__':
             
             if choice.strip() == '1':
                 urls = get_urls_from_file()
+                print(*urls, sep='\n')
                 break
             
             if choice.strip() == '2':
