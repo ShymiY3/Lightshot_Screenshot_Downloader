@@ -39,7 +39,6 @@ class ScreenshotDownload:
         return f'{today_str}_{suffix}'
     
     def is_valid_url(self, url):
-        print("URL")
         try:
             result = urlparse(url)
             return all([result.scheme, result.netloc])
