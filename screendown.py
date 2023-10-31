@@ -144,7 +144,7 @@ class ScreenshotDownload:
         requests.Response
             the response from the server
         """
-        headers = {'user-agent': generate_user_agent().random}
+        headers = {'user-agent': generate_user_agent()}
         try:
             request = requests.get(url, headers=headers)
         except Exception as e:
