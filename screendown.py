@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-from user_agent import generate_user_agent
 from urllib.parse import urlparse
 import requests
 import os
@@ -44,8 +43,8 @@ class ScreenshotDownload:
     run():
         Runs the screenshot download process
     """
-    
-    def __init__(self, urls: list | tuple | str) -> None:
+
+    def __init__(self, urls: list | tuple | str, dir = None) -> None:
         """
         Constructs all the necessary attributes for the ScreenshotDownload object.
 
@@ -54,12 +53,21 @@ class ScreenshotDownload:
             urls : list | tuple | str
                 a list, tuple or string containing urls to download screenshots from
         """
-        self.urls = urls
-        if isinstance(urls, str):
-            self.urls = [urls]
-        self.dir_name = self.get_dir_name() 
+        self.urls = self.format_url(urls)
+        self.dir_name = self.get_dir_name(dir)
 
-    def get_dir_name(self):
+    def extend_protocol(self, url):
+        url = url.strip()
+        url = "https://" + url if not url.startswith("http") else url
+        return url
+    
+    def format_url(self, urls):
+        if isinstance(urls, str):
+            urls = urls.split()
+
+        return list(map(self.extend_protocol, urls))
+
+    def get_dir_name(self, dir=None):
         """
         Returns the name of the directory where the screenshots will be saved.
         The directory name is based on the current date and a suffix number if necessary.
@@ -69,27 +77,32 @@ class ScreenshotDownload:
         str
             the name of the directory where the screenshots will be saved
         """
-        dirs = os.listdir()
+        dir = os.getcwd() if dir is None else dir
+        
+        if not os.path.isdir(dir):
+            raise Exception("Not valid directory")
+        
+        dirs = os.listdir(dir)
         today_str = str(datetime.date.today())
         suffix = 0
-        
+
         for directory in dirs:
             if directory == today_str:
                 suffix = 1
                 continue
-            
+
             if not directory.startswith(today_str):
                 continue
-            dir_suffix = directory.rsplit('_', 1)[-1]
-            
+            dir_suffix = directory.rsplit("_", 1)[-1]
+
             if not dir_suffix.isnumeric():
                 continue
-            suffix = max(suffix, int(dir_suffix)+1)
+            suffix = max(suffix, int(dir_suffix) + 1)
 
         if suffix == 0:
             return today_str
-        return f'{today_str}_{suffix}'
-    
+        return os.path.join(dir, f"{today_str}_{suffix}")
+
     def is_valid_url(self, url: str):
         """
         Returns True if the url is valid, False otherwise.
@@ -109,7 +122,7 @@ class ScreenshotDownload:
             return all([result.scheme, result.netloc])
         except:
             return False
-        
+
     def is_valid_domain(self, url: str):
         """
         Returns True if the url domain is valid, False otherwise.
@@ -129,7 +142,7 @@ class ScreenshotDownload:
             return DOMAIN in urlparse(url).netloc
         except:
             return False
-        
+
     def make_request(self, url: str):
         """
         Sends a GET request to the given url and returns the response.
@@ -144,7 +157,8 @@ class ScreenshotDownload:
         requests.Response
             the response from the server
         """
-        headers = {'user-agent': generate_user_agent()}
+        user_agent = "'Mozilla/5.0 (Windows NT 6.3; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0'"
+        headers = {"user-agent": user_agent}
         try:
             request = requests.get(url, headers=headers)
         except Exception as e:
@@ -152,7 +166,7 @@ class ScreenshotDownload:
         if request.status_code != 200:
             raise SSDownloadException("No connection to website")
         return request
-        
+
     def scrape_image(self, request_text: str):
         """
         Scrapes the image source from the given request text and returns it.
@@ -167,15 +181,15 @@ class ScreenshotDownload:
         str
             the image source url
         """
-        soup = BeautifulSoup(request_text, 'html.parser')
-        tag = soup.find(id='screenshot-image')
-        img_source = tag.get('src', None)
-        
+        soup = BeautifulSoup(request_text, "html.parser")
+        tag = soup.find(id="screenshot-image")
+        img_source = tag.get("src", None)
+
         if img_source is None:
             raise SSDownloadException("Image source doesn't exist")
-        
+
         return img_source
-    
+
     def fetch_image_sources(self):
         """
         Fetches the image sources from the given urls and returns them.
@@ -187,21 +201,21 @@ class ScreenshotDownload:
         """
         img_sources = []
         for url in self.urls:
-            url = url.strip()
-            url = "https://" + url if not url.startswith("http") else url
-            if not (self.is_valid_url(url) and self.is_valid_domain(url)): 
+            if not (self.is_valid_url(url) and self.is_valid_domain(url)):
+                print(f"Not valid input: {url}")
                 continue
             try:
                 request = self.make_request(url)
                 img_source = self.scrape_image(request.text)
+                print(f"Image link parsed from: {url}")
             except SSDownloadException as e:
-                print(e)
+                print(f"Error with url: {url}; {e}")
                 continue
-            img_sources.append(img_source)    
+            img_sources.append((img_source, url))
 
         return img_sources
-    
-    def save_image(self, img_title: str, content: bytes):
+
+    def save_image(self, img_title: str, content: bytes, url: str):
         """
         Saves the given image content to a file with the given title.
 
@@ -212,10 +226,14 @@ class ScreenshotDownload:
         content : bytes
             the content of the image file
         """
-        with open(os.path.join(self.dir_name,f'{img_title}.png'), 'wb') as f:
+        try:
+            with open(os.path.join(self.dir_name, f"{img_title}.png"), "wb") as f:
                 f.write(content)
-    
-    def download_and_save(self, img_sources: list):
+            print(f"File {url} saved as {img_title}")
+        except Exception as e:
+            print(f"Error while saving to file: {url}")
+
+    def download_and_save(self, img_sources: list[tuple]):
         """
         Downloads and saves the images from the given sources.
 
@@ -224,74 +242,80 @@ class ScreenshotDownload:
         img_sources : list
             a list of image source urls
         """
-        for ind, img in enumerate(img_sources):
-            img_title = f'image_{ind}' if ind else 'image'
-            request = requests.get(img)
-            if request.status_code != 200:
-                print(f"Can't download image: {img}")
+        for ind, (img, url) in enumerate(img_sources):
+            img_title = f"image_{ind}" if ind else "image"
+            try:
+                request = requests.get(img)
+                if request.status_code != 200:
+                    raise SSDownloadException
+            except:
+                print(f"Can't download image: {url}")
                 continue
-            self.save_image(img_title, request.content)
-    
+
+            self.save_image(img_title, request.content, url)
+
     def run(self):
         """
         Runs the screenshot download process.
         """
         img_sources = self.fetch_image_sources()
-        
+
         if not img_sources:
-            return 
+            return
         os.mkdir(self.dir_name)
         self.download_and_save(img_sources)
-    
-   
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     def get_urls_from_file():
         print("Urls in file must be separated by new line or space")
-        file_path = str(input('Your file path: '))
+        file_path = str(input("Your file path: "))
         urls = []
-                
+
         with open(file_path) as f:
-            urls = f.read().split()    
-        
+            urls = f.read().split()
+
         return urls
-    
+
     def get_urls_from_input():
         print(
-        """
+            """
         Type in each url separated by new line or space. To end typing type "0".
         """
         )
         urls = []
         while True:
             url = str(input("Your url: "))
-            if url == '0':
+            if url == "0":
                 break
-            
+
             urls.extend(url.split())
         return urls
-    def main():    
+
+    def main():
         print(
-        """Choose option:
+            """Choose option:
     1. From file 
     2. From manual input
     0. Exit"""
         )
         while True:
             choice = str(input("Your choice: "))
-            
-            if choice.strip() == '1':
+
+            if choice.strip() == "1":
                 urls = get_urls_from_file()
-                print(*urls, sep='\n')
+                print("URLS:")
+                print(*urls, sep="\n")
                 break
-            
-            if choice.strip() == '2':
+
+            if choice.strip() == "2":
                 urls = get_urls_from_input()
                 break
-        
-            if choice.strip() == '0':
+
+            if choice.strip() == "0":
                 return
 
         SD = ScreenshotDownload(urls)
         SD.run()
-        
+
     main()
