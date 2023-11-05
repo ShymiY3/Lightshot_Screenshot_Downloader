@@ -1,5 +1,5 @@
 from screendown import ScreenshotDownload, SSDownloadException
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 from gui import *
 import os, sys
 import time
